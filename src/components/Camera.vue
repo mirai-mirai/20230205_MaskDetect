@@ -7,8 +7,11 @@ import '@mediapipe/face_detection';
 import * as faceDetection from '@tensorflow-models/face-detection';
 import * as tmImage from '@teachablemachine/image';
 
-import modelURL from './model.json?url';
-import metadataURL from './metadata.json?url';
+// import modelURL from './model.json?url';
+// import metadataURL from './metadata.json?url';
+
+const modelURL = '/model.json'; // publicを参照
+const metadataURL = '/metadata.json';
 
 const [videoRef, canvasRef, canvasRef2] = [ref(), ref(), ref()];
 let video: HTMLVideoElement;

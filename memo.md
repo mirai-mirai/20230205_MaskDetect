@@ -314,3 +314,24 @@ export default defineConfig({
 publicフォルダにおいて、/model.jsonみたいにアクセスするといいみたい。
 publicフォルダのデータはそのままdistルートにコピーされるはず
 
+下記の追加によって、全部dist/に出力されるようになった。
+build: {
+rollupOptions: {
+  output: {
+    assetFileNames: '[name]-[hash][extname]',
+    chunkFileNames: '[name]-[hash].js',
+    entryFileNames: '[name]-[hash].js',
+  },
+},
+},
+
+ただ、pagesにアップするとうまくいかない。
+
+model.jsonをルートから取りに行こうとする。
+
+やっぱりassetsフォルダにおいて名前解決するのがよいのか？
+publicフォルダにおいてあるのがよくない？
+node_modulesのソースからの参照でもパスを修正してくれる？？
+
+ここを突破しないと相対パスに苦しむことになる。
+

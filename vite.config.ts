@@ -3,10 +3,11 @@ import vue from '@vitejs/plugin-vue'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: "./", // これで出力パスが　/assets から　./assetsに変わる
+  base: "/20230205_MaskDetect/", // これで出力パスが　/assets から　./assetsに変わる
   assetsInclude: ['**/*.bin', '**/*.json'], // うまくモデルを読み込めない問題
   plugins: [vue()],
   build: {
+    outDir: 'docs',
     rollupOptions: {
       output: {
         assetFileNames: '[name]-[hash][extname]',

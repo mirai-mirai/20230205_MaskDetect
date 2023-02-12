@@ -172,7 +172,7 @@ const init = async () => {
       }
     }
 
-    setTimeout(loop, 100);
+    setTimeout(loop, 300);
   }
 
   video.onplaying = e => {

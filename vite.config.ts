@@ -2,17 +2,18 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 // https://vitejs.dev/config/
+
 export default defineConfig({
-  base: "/20230205_MaskDetect/", // これで出力パスが　/assets から　./assetsに変わる
-  assetsInclude: ['**/*.bin', '**/*.json'], // うまくモデルを読み込めない問題
+  base: '/20230205_MaskDetect/', // github pagesの変な仕様（ルートが１つ上）に対応する
+  assetsInclude: ["**/*.bin", "**/*.json"],// うまくモデルを読み込めない問題
   plugins: [vue()],
   build: {
-    outDir: 'docs',
+    outDir: 'docs', // ビルド出力先を変更
     rollupOptions: {
       output: {
         assetFileNames: '[name]-[hash][extname]',
-        chunkFileNames: '[name]-[hash].js',
-        entryFileNames: '[name]-[hash].js',
+        chunkFileNames: '[name]-[hash].js', // JSをルートに出力
+        entryFileNames: '[name]-[hash].js', // JSをルートに出力
       },
     },
   },

@@ -335,3 +335,61 @@ node_modulesのソースからの参照でもパスを修正してくれる？�
 
 ここを突破しないと相対パスに苦しむことになる。
 
+下記でうまくいった。
+リソースはpublicにおいておく
+/public/
+ .nojekyll
+ metadata.json
+ model.json
+ weights.bin
+
+読み込みは下記で
+import modelURL from '/model.json?url'; // publicを参照
+import metadataURL from '/metadata.json?url';
+
+設定は下記
+export default defineConfig({
+  base: '/20230205_MaskDetect/', // github pagesの変な仕様（ルートが１つ上）に対応する
+  assetsInclude: ["**/*.bin", "**/*.json"], 
+  plugins: [vue()],
+  build: {
+    outDir: 'docs', // ビルド出力先を変更
+    rollupOptions: {
+      output: {
+        assetFileNames: '[name]-[hash][extname]',
+        chunkFileNames: '[name]-[hash].js', // JSをルートに出力
+        entryFileNames: '[name]-[hash].js', // JSをルートに出力
+      },
+    },
+  },
+})
+
+
+
+assetsIncludeはなくても動く？？
+
+とりあえず完成したから、マスク検知の精度を確認して、
+モデルアップロードできるようにしたい
+
+次にページ遷移を作りこんで１つのコンテンツにしたい
+
+SVMでお手軽に学習できるようにしたい
+
+モデルをドロップして、localStorageに保存できるようにしたい
+
+まずは、zipファイルのままで処理できるようにするか。
+
+PowerShellスクリプトも不要になった。
+
+
+New-Item -Force -Path "./" -Name "docs" -ItemType "directory"
+Get-ChildItem docs/* -Recurse | Remove-Item -Force -Recurse
+Copy-Item -Force -Recurse dist/* docs
+
+# $file_contents = $(Get-Content "docs\index.html") -replace "/assets/","assets/"
+# $file_contents > "docs\index.html"
+
+１回学習し直すか。そしてそれを読み直すか。
+
+vue-routerで１つにまとめたい。
+

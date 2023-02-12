@@ -1,97 +1,190 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import * as tf from '@tensorflow/tfjs-core';
+import '@tensorflow/tfjs-core';
 import '@tensorflow/tfjs-backend-webgl';
 import '@tensorflow/tfjs-converter';
 import '@mediapipe/face_detection';
 import * as faceDetection from '@tensorflow-models/face-detection';
 import * as tmImage from '@teachablemachine/image';
-
-// import modelURL from '../../public/model.json';
-// import metadataURL from '../../public/metadata.json';
-
+import Toggle from './Vue3ToggleButton.vue';
+import * as JSZip from 'jszip';
 import modelURL from '/model.json?url'; // publicを参照
 import metadataURL from '/metadata.json?url';
 
-// const modelURL = '/model.json'; // publicを参照
-// const metadataURL = '/metadata.json';
-
-const [videoRef, canvasRef, canvasRef2] = [ref(), ref(), ref()];
+const [videoRef, resultCanvasRef] = [ref(), ref()];
+let [isCamera, isFace] = [ref(true), ref(true)];
 let video: HTMLVideoElement;
-let canvas: HTMLCanvasElement, canvas2: HTMLCanvasElement;
-let stream: MediaStream;
+let videoCanvas: HTMLCanvasElement;
+let resultCanvas: HTMLCanvasElement;
 let detector: faceDetection.FaceDetector;
-let tMachine: tmImage.CustomMobileNet;
-let isMasked = ref('');
+let tMachine: tmImage.CustomMobileNet | undefined;
+let detectTime: string = '';
+let tmTime: string = '';
 
 const lg = (msg: any) => { console.log(msg) };
 
-const init = async () => {
-  lg(tf.version_core);
-  const tMachineP = tmImage.load(modelURL, metadataURL);
-
-  lg('mounted');
-  video = videoRef.value;
-  canvas = canvasRef.value;
-  canvas2 = canvasRef2.value;
-  const ctx = canvas.getContext("2d")!;
-  const ctx2 = canvas2.getContext("2d")!;
-  canvas.width = 640;
-  canvas.height = 480;
-
+const initCamera = async () => {
   const opt = { video: { width: 640, height: 480 }, audio: false };
-  const streamP = navigator.mediaDevices.getUserMedia(opt);
+  video.srcObject = await navigator.mediaDevices.getUserMedia(opt);
+  isCamera.value && video.play();
+  statusUpdate();
+}
 
+const initFaceDetector = async () => {
   const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
-  const detectorP = faceDetection.createDetector(model, { runtime: 'tfjs' });
+  detector = await faceDetection.createDetector(model, { runtime: 'tfjs' });
+  statusUpdate();
+}
 
-  [stream, detector, tMachine] = await Promise.all([streamP, detectorP, tMachineP]);
-  lg('init complete');
+const initTMachine = async () => {
+  tMachine = await tmImage.load(modelURL, metadataURL);
+  statusUpdate();
+}
 
-  const numClasses = tMachine.getTotalClasses();
+const statusUpdate = () => {
+  document.getElementById("msg")!.innerHTML =
+    `camera:${video?.srcObject ? video.videoWidth + "x" + video.videoHeight : 'wait'
+    }<br/>
+faceDetector:${detector ? 'OK' + detectTime : 'loading'} <br/>
+teachableMachine:${tMachine ? 'OK' + tmTime : 'loading'} `
+}
 
-  video.srcObject = stream;
-  video.play();
+const camToggle = () => { isCamera.value ? video.play() : video.pause() }
+
+interface ModelData {
+  model: File | null;
+  meta: File | null;
+  weights: File | null;
+}
+
+const dropModel = async (e: DragEvent) => {
+  const firstFile = e.dataTransfer!.files[0];
+  const zip = await JSZip.loadAsync(firstFile);
+  let model: ModelData = { model: null, meta: null, weights: null };
+
+  for (const [key, obj] of Object.entries(zip.files)) {
+    const blob = await obj.async("blob");
+    const file = new File([blob], key);
+    switch (key) {
+      case 'model.json': model.model = file; break;
+      case 'metadata.json': model.meta = file; break;
+      case 'weights.bin': model.weights = file; break;
+    }
+  }
+  tMachine = undefined;
+  statusUpdate();
+  tMachine = await tmImage.loadFromFiles(model.model!, model.weights!, model.meta!);
+  statusUpdate();
+
+}
+
+const init = async () => {
+  lg('mounted');
+
+  video = videoRef.value;
+  resultCanvas = resultCanvasRef.value;
+  videoCanvas = document.createElement("canvas");
+  const trimCanvas = document.createElement("canvas");
+  [trimCanvas.width, trimCanvas.height] = [96, 96];
+
+  let ctxVideo = videoCanvas.getContext("2d");
+  let ctxResult = resultCanvas.getContext("2d")!;
+  let ctxTrim = trimCanvas.getContext("2d");
+  statusUpdate();
+  initCamera();
+  initFaceDetector();
+  initTMachine();
 
   interface Box { x: number, y: number, w: number, h: number }
 
   const loop = async () => {
-    if (video.paused) return;
-    ctx.drawImage(video, 0, 0);
-    const cfg = { flipHorizontal: false };
-    const t1 = performance.now();
-    const faces = await detector.estimateFaces(canvas, cfg);
-    const t2 = performance.now();
-    console.log(`${(Math.floor(t2 - t1))}ms`);
+    if (video.paused) {
+      ctxResult.fillStyle = 'rgba(0,0,0)';
+      ctxResult.fillRect(0, 0, resultCanvas.width, resultCanvas.height);
+      detectTime = '';
+      tmTime = '';
+      statusUpdate();
+      return;
+    }
+    ctxVideo?.drawImage(video, 0, 0);
+    if (!isFace.value) {
+      ctxResult?.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+      tmTime = '';
+      detectTime = '';
+      statusUpdate();
+    }
+    if (isFace.value && detector) {
+      const cfg = { flipHorizontal: false };
+      const t1 = performance.now();
+      const faces = await detector.estimateFaces(videoCanvas, cfg);
+      const t2 = performance.now();
+      detectTime = ` (${(Math.floor(t2 - t1))} ms)`;
+      statusUpdate();
 
-    const drawImage = (ctx: CanvasRenderingContext2D, box: Box) => {
-      const { x, y, w, h } = box;
-      [ctx.canvas.width, ctx.canvas.height] = [w, h];
-      ctx.canvas.style.width = '96px';
-      ctx.canvas.style.height = '96px';
-      ctx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+      const drawBox = (box: Box, color: string) => {
+        const { x, y, w, h } = box;
+        ctxResult.fillStyle = color;
+        ctxResult?.fillRect(x, y, w, h);
+      }
+
+      const trimImage = (box: Box) => {
+        const { x, y, w, h } = box;
+        ctxTrim?.drawImage(videoCanvas, x, y, w, h, 0, 0, 96, 96);
+      }
+
+      if (faces?.length) {
+        const { xMin, yMin, width, height } = faces[0].box;
+        const faceBox: Box = { x: xMin, y: yMin, w: width, h: height }
+        // drawBox(faceBox, 'rgba(255,255,255,0.2)');
+
+        const { x, y } = faces[0].keypoints[3];
+        const w = width / 2, h = w;
+        const mouthBox: Box = { x: x - w / 2, y: y - w / 2, w, h }
+        trimImage(mouthBox);
+
+        let pred: any = [];
+
+        if (tMachine) {
+          const t1 = performance.now();
+          pred = await tMachine.predict(trimCanvas);
+          const t2 = performance.now();
+          tmTime = ` (${(Math.floor(t2 - t1))} ms)`;
+          ctxResult.fillText('test', 10, 10);
+
+          const x = mouthBox.x;
+          const y = mouthBox.y;
+          ctxResult?.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+          drawBox(mouthBox, 'rgba(255,255,255,0.5)');
+
+          for (let i = 0; i < pred.length; i++) {
+            const { className, probability } = pred[i];
+            ctxResult.font = '12px serif';
+            ctxResult.fillStyle = 'rgb(0,0,0)';
+            ctxResult.textBaseline = 'top';
+            ctxResult?.fillText(className, x, y + i * 20 + 5);
+            const m = ctxResult.measureText(className);
+            const h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+            ctxResult!.fillStyle = 'rgba(0,0,255,0.5)';
+            ctxResult?.fillRect(x, y + i * 20 + h + 7, probability * w, 7);
+          }
+        }
+
+      }
     }
 
-    if (faces?.length) {
-      const { xMin, yMin, width, height } = faces[0].box;
-      const faceBox: Box = { x: xMin, y: yMin, w: width, h: height }
-
-      const { x, y } = faces[0].keypoints[3];
-      const w = width / 2, h = w;
-      const mouthBox: Box = { x: x - w / 2, y: y - w / 2, w, h }
-      drawImage(ctx2, mouthBox);
-      const pred = await tMachine.predict(canvas2);
-      const [c1, c2] = [pred[0].probability, pred[1].probability];
-      isMasked.value = `${c1.toFixed(2)} ${c2.toFixed(2)}`;
-    }
-
-    setTimeout(loop, 200);
+    setTimeout(loop, 100);
   }
 
   video.onplaying = e => {
-    lg('loop started');
+    lg('onplaying');
+    const resizeCanvas = (c: HTMLCanvasElement) => {
+      [c.width, c.height] = [video.videoWidth, video.videoHeight];
+    }
+    resizeCanvas(resultCanvas);
+    resizeCanvas(videoCanvas);
     loop()
   };
+
 }
 
 onMounted(init);
@@ -99,14 +192,68 @@ onMounted(init);
 </script>
 
 <template>
-  <video ref="videoRef" muted controls></video>
-  <canvas ref="canvasRef"></canvas>
-  <canvas ref="canvasRef2"></canvas>
-  {{ isMasked }}
+  <div class="dropArea" @dragover.prevent @drop.prevent="dropModel">
+    <div class="toggleArea">
+      Camera <br />
+      <Toggle class="toggle" v-model:isActive="isCamera" @on-change="camToggle" />
+    </div>
+    <div class="toggleArea">
+      Mouth
+      <Toggle class="toggle" v-model:isActive="isFace" />
+    </div>
+    <br />
+    <div class="videoArea">
+      <video ref="videoRef" muted></video>
+      <canvas class="resultCanvas" ref="resultCanvasRef"></canvas>
+    </div>
+    <div id="msg"></div>
+  </div>
 </template>
 
 <style scoped>
+.dropArea {
+  width: 100vw;
+  height: 100vh;
+  background-color: black;
+  color: lightskyblue;
+}
+
+.toggleArea {
+  display: inline-block;
+  text-align: center;
+  margin: 10px 30px 5px 10px;
+  vertical-align: center;
+  font-size: 130%;
+}
+
+.toggle {
+  margin-left: 10px;
+}
+
+button {
+  width: 120px;
+  height: 50px;
+  margin: 5px;
+}
+
+.videoArea {
+  position: relative;
+}
+
 video {
   width: 640px;
+  height: 480px;
+}
+
+.resultCanvas {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  width: 640px;
+  height: 480px;
+}
+
+#msg {
+  margin-left: 5px;
 }
 </style>
